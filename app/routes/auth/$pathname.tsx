@@ -11,7 +11,7 @@ function RouteComponent() {
 
     return (
         <main className="flex grow flex-col items-center justify-center gap-4 p-4">
-            <AuthCard pathname={pathname} />
+            <AuthCard pathname={pathname} redirectTo="/dashboard"/>
 
             <p
                 className={cn(

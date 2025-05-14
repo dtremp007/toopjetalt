@@ -1,0 +1,235 @@
+# Application Architecture Guide
+
+## React 19
+- In React 19, you can render '<Context>' as a provider instead of '<Context.Provider>'.
+- In React 19, 'use' is preferred over 'useContext' because it is more flexible.
+
+## Entity Implementation Guide
+
+This guide outlines the standard approach for implementing new entities in our application.
+
+### 1. Database Schema Definition
+Location: `database/schemas/{entity}.schema.ts`
+
+```typescript
+import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+export const entityName = pgTable("entity_name", {
+  // Primary key should be either:
+  // - 'id' if using UUID/auto-increment
+  // - 'slug' if using a readable identifier
+  id: text("id").primaryKey(),
+  // Add entity-specific fields here
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Export the inferred type for use in components
+export type EntityName = typeof entityName.$inferSelect;
+```
+
+Don't forget to export your schema in `database/schema.ts`.
+
+### 2. Query and Mutation Definitions
+Location: `lib/queries/{entity}.ts`
+
+```typescript
+import { queryOptions } from "@tanstack/react-query";
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import { db } from "../server/db";
+import { entityName, type EntityName } from "../server/schema/{entity}.schema";
+
+// 1. Define Zod Schema for validation
+export const entitySchema = z.object({
+  // Include fields that can be edited
+  // Add .optional() for optional fields
+  // Add validation rules as needed
+});
+
+// 2. Export type for form handling
+export type EditEntity = z.infer<typeof entitySchema>;
+
+// 3. Server Functions
+// Fetch all entities
+export const fetchEntities = createServerFn({ method: "GET" })
+  .handler(async (): Promise<EntityName[]> => {
+    return db.select().from(entityName).orderBy(entityName.name);
+  });
+
+// Create/Update entity
+export const createEntity = createServerFn({ method: "POST" })
+  .validator(entitySchema)
+  .handler(async ({ data }) => {
+    // Handle slug generation if needed
+    const newEntity = {
+      // Map data to entity fields
+    };
+    await db
+      .insert(entityName)
+      .values(newEntity)
+      .onConflictDoUpdate({
+        target: [entityName.id], // or slug
+        set: newEntity,
+      });
+    return newEntity;
+  });
+
+// 4. Query Options
+export const entitiesQueryOptions = () =>
+  queryOptions({
+    queryKey: ["entityName"],
+    queryFn: () => fetchEntities(),
+  });
+```
+
+### 3. Route Component Implementation
+Location: `app/routes/dashboard/settings/{entity}.tsx`
+
+```typescript
+import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import {
+  createEntity,
+  EditEntity,
+  entitiesQueryOptions,
+} from "~/lib/queries/{entity}";
+
+export const Route = createFileRoute("/dashboard/settings/{entity}")({
+  loader: async ({ context }) => {
+    await context.queryClient.ensureQueryData(entitiesQueryOptions());
+  },
+  component: EntityComponent,
+});
+
+// Form component for create/edit
+function EntityForm({
+  onSuccess,
+  entity,
+}: {
+  onSuccess: () => void;
+  entity?: EditEntity | null;
+}) {
+  const createEntityMutation = useMutation({
+    mutationFn: (data: EditEntity) => createEntity({ data }),
+    onSuccess,
+  });
+
+  return (
+    <form
+      action={async (formData: FormData) => {
+        // Extract form data
+        await createEntityMutation.mutateAsync({
+          // Map form data to entity schema
+        });
+      }}
+    >
+      {/* Form fields */}
+    </form>
+  );
+}
+
+// Main component
+function EntityComponent() {
+  const entitiesQuery = useSuspenseQuery(entitiesQueryOptions());
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingEntity, setEditingEntity] = useState<EditEntity | null>(null);
+
+  // Handle success
+  const handleEntityFormSuccess = () => {
+    entitiesQuery.refetch();
+    setEditingEntity(null);
+    setDialogOpen(false);
+  };
+
+  return (
+    // UI implementation
+  );
+}
+```
+
+## Naming Conventions
+
+1. **Files and Directories**
+   - Schema files: `{entity}.schema.ts`
+   - Query files: `{entity}.ts` in queries directory
+   - Route files: `{entity}.tsx` in appropriate route directory
+
+2. **Types and Interfaces**
+   - Database entity type: `EntityName` (PascalCase)
+   - Edit/Create type: `EditEntity` (PascalCase with Edit prefix)
+   - Form props type: `EntityFormProps` (PascalCase with Form suffix)
+
+3. **Functions and Variables**
+   - Server functions: `fetchEntity`, `createEntity`, `updateEntity`, `deleteEntity`
+   - Query options: `entityQueryOptions`
+   - Mutations: `createEntityMutation`, `updateEntityMutation`
+   - State variables: `editingEntity`, `selectedEntity`
+
+## Server Functions
+
+Server functions are created using `createServerFn` from `@tanstack/react-start`:
+
+1. **Basic Structure**
+```typescript
+export const functionName = createServerFn({ method: "HTTP_METHOD" })
+  .validator(zodSchema) // Optional
+  .handler(async ({ data }) => {
+    // Implementation
+  });
+```
+
+2. **Common Methods**
+   - GET: For fetching data
+   - POST: For creating/updating data
+   - DELETE: For removing data
+
+3. **Validation**
+   - Always use Zod schemas for input validation
+   - Define schemas at the top of the query file
+   - Export schema if needed for client-side validation
+
+4. **Error Handling**
+   - Use try/catch blocks for database operations
+   - Return appropriate error responses
+   - Handle conflicts using `.onConflictDoUpdate` where appropriate
+
+## UI Components
+
+1. **Layout**
+   - Use Card components for list views
+   - Use Dialog for create/edit forms
+   - Implement responsive designs using Tailwind classes
+
+2. **Forms**
+   - Use `components/ui/form` for form and input wrappers along with appropriate components from `components/ui`
+
+3. **State Management**
+   - Use React Query for server state
+   - Use local state for UI elements (dialogs, selections)
+   - Implement optimistic updates where appropriate
+
+## Best Practices
+
+1. **Type Safety**
+   - Use TypeScript types consistently
+   - Leverage schema inference for database types
+   - Define explicit types for form data
+
+2. **Query Management**
+   - Use meaningful query keys
+   - Implement proper cache invalidation
+   - Handle loading and error states
+
+3. **Code Organization**
+   - Keep related code together in query files
+   - Separate business logic from UI components
+   - Use consistent file structure across entities
+
+4. **Performance**
+   - Implement proper query caching
+   - Use suspense for loading states
+   - Optimize database queries
+
+This guide should be updated as new patterns emerge or requirements change.
