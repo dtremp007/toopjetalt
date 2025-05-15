@@ -3,7 +3,7 @@ import { Row, Value } from "@/lib/spreadsheet/row";
 import { CodeEditor } from "@/components/code-editor";
 import { Badge } from "@/components/ui/badge";
 import MultipleSelector, { Option } from "@/components/ui/multiple-selector";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PlusIcon, TrashIcon } from "lucide-react";
 import { ConfigureInput, INPUT_COMPONENTS } from "@/components/configure-input";
@@ -21,18 +21,52 @@ export const columns: ColumnDef<Row>[] = [
     header: () => <div className="flex-none w-20">Name</div>,
     accessorKey: "name",
     cell: ({ row }) => {
-      return <div className="flex-none w-20">{row.original.name}</div>;
+      return (
+        <div className="flex-none w-20">
+          <input
+            type="text"
+            className="w-full px-2 py-1"
+            defaultValue={row.original.name}
+            onBlur={(e) => {
+              row.original.rename(e.target.value);
+            }}
+          />
+        </div>
+      );
     },
   },
   {
     header: "Expression",
     accessorKey: "expression",
     cell: ({ row, table }) => {
+      const [value, setValue] = useState(row.original.getExpression());
+
+      useEffect(() => {
+        const handleChangedExpression = () => {
+          setValue(row.original.getExpression());
+        };
+        row.original.addEventListener(
+          "changedExpression",
+          handleChangedExpression
+        );
+        return () => {
+          row.original.removeEventListener(
+            "changedExpression",
+            handleChangedExpression
+          );
+        };
+      }, [row.original]);
+
       if (row.original.getInput()) return null;
 
       return (
         <CodeEditor
-          defaultValue={row.original.getExpression()}
+          key={row.original.name}
+          value={value}
+          onChange={(value) => {
+            setValue(value);
+            row.original.updateExpression(value);
+          }}
           onFocusLeave={(value) => {
             row.original.updateExpression(value);
           }}
@@ -166,9 +200,13 @@ export const columns: ColumnDef<Row>[] = [
     cell: ({ row }) => {
       return (
         <div>
-          <Button variant="ghost" size="icon" onClick={() => {
-            row.original.remove();
-          }}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              row.original.remove();
+            }}
+          >
             <TrashIcon />
           </Button>
         </div>

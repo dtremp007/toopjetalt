@@ -4,20 +4,18 @@ import { javascript } from "@codemirror/lang-javascript";
 import { useTheme } from "next-themes";
 
 export function CodeEditor({
-  defaultValue,
+  value,
+  onChange,
   onFocusLeave,
   height = "200px",
 }: {
-  defaultValue: string;
+  value: string;
+  onChange: (value: string) => void;
   onFocusLeave: (value: string) => void;
   height?: string;
 }) {
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
 
-  const [value, setValue] = React.useState(defaultValue);
-  const onChange = React.useCallback((val: string) => {
-    setValue(val);
-  }, []);
   return (
     <CodeMirror
       value={value}
@@ -26,7 +24,7 @@ export function CodeEditor({
       className="w-full"
       onChange={onChange}
       onBlur={() => onFocusLeave(value)}
-      theme={theme as "light" | "dark"}
+      theme={resolvedTheme as "light" | "dark"}
       basicSetup={{
         lineNumbers: false,
         foldGutter: false,

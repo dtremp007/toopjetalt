@@ -95,6 +95,10 @@ export class Row extends EventTarget {
     this.dispatchEvent(new Event("valueChange"));
   }
 
+  public rename(name: string): void {
+    this.dispatchEvent(new CustomEvent("rename", { detail: name }));
+  }
+
   public getInput(): RowInput | undefined {
     return this.input;
   }
@@ -183,6 +187,14 @@ export class Row extends EventTarget {
     }
 
     this.dispatchEvent(new Event("updateExpression"));
+  }
+
+  public updateVariable(variable: string, value: string): void {
+    this.expr = this.expr.replace(variable, value);
+    this.AST = parse(this.expr, { ecmaVersion: "latest" });
+    this.dependencies = [];
+
+    this.dispatchEvent(new Event("changedExpression"));
   }
 
   public getAST(): Program {

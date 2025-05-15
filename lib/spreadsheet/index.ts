@@ -74,15 +74,21 @@ export class Spreadsheet extends EventTarget {
       this.evaluateAll();
     };
 
+    const handleRename = (e: CustomEvent<string>) => {
+      this.renameRow(id, e.detail);
+    };
+
     row.addEventListener("setInput", handleSetInput);
     row.addEventListener("updateExpression", handleUpdateExpression);
     row.addEventListener("valueChange", handleValueChange);
     row.addEventListener("remove", handleRemove, { once: true });
+    row.addEventListener("rename", handleRename);
 
     this.cleanupFns.set(id, () => {
       row.removeEventListener("setInput", handleSetInput);
       row.removeEventListener("updateExpression", handleUpdateExpression);
       row.removeEventListener("valueChange", handleValueChange);
+      row.removeEventListener("rename", handleRename);
     });
 
     return id;
@@ -103,17 +109,21 @@ export class Spreadsheet extends EventTarget {
     const row = this.rows.get(id);
     if (!row) return;
     const oldName = row.name;
+    row.name = newName;
 
     const filteredRows = Array.from(this.rows.values()).filter((r) =>
       r.getDependencies().map(this.mapVarToId()).includes(id)
     );
 
+    this._variableToIdMap?.set(newName, id);
+    this._variableToIdMap?.delete(oldName);
+
     // Update all expressions that reference $oldName → $newName
     for (const r of filteredRows) {
-      r.updateExpression((expr) =>
-        expr.replace(new RegExp(`\\$${oldName}\\b`, "g"), `$${newName}`)
-      );
+      r.updateVariable(oldName, newName);
     }
+
+    this.evaluateAll();
   }
 
   getVariableMap(): Map<string, string> {
