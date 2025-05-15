@@ -1,17 +1,12 @@
 import { ColumnDef } from "@tanstack/react-table";
-import { Row } from "@/lib/spreadsheet/row";
+import { Row, Value } from "@/lib/spreadsheet/row";
 import { CodeEditor } from "@/components/code-editor";
-import { Spreadsheet } from "@/lib/spreadsheet";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import MultipleSelector, { Option } from "@/components/ui/multiple-selector";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { PlusIcon } from "lucide-react";
-import { Counter } from "@/components/ui/counter";
+import { PlusIcon, TrashIcon } from "lucide-react";
 import { ConfigureInput, INPUT_COMPONENTS } from "@/components/configure-input";
-import { SelectWithOptions } from "@/components/ui/select-with-options";
 import { getInputOnChange } from "@/lib/form/get-input-on-change";
 
 const DEFAULT_TAGS = [
@@ -52,9 +47,7 @@ export const columns: ColumnDef<Row>[] = [
       const input = row.original.getInput();
 
       const handleOnChange = getInputOnChange((value) => {
-        (
-          table.options.meta as { spreadsheet: Spreadsheet }
-        )?.spreadsheet?.updateInputValue(row.original.id, value);
+        row.original.setValue(value as Value);
       });
 
       if (!input) {
@@ -93,7 +86,7 @@ export const columns: ColumnDef<Row>[] = [
       const value = row.original.getValue();
       const valueType = row.original.getValueType();
 
-      if (valueType === "function" || valueType === "object") {
+      if (["function", "object", "date"].includes(valueType)) {
         return <div className="flex-none w-12 text-center">...</div>;
       }
 
@@ -164,6 +157,20 @@ export const columns: ColumnDef<Row>[] = [
               </p>
             }
           />
+        </div>
+      );
+    },
+  },
+  {
+    header: "Actions",
+    cell: ({ row }) => {
+      return (
+        <div>
+          <Button variant="ghost" size="icon" onClick={() => {
+            row.original.remove();
+          }}>
+            <TrashIcon />
+          </Button>
         </div>
       );
     },

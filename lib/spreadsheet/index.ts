@@ -5,7 +5,6 @@ import { nanoid } from "nanoid";
 export type SpreadsheetOptions = {
   context?: Record<string, Value>;
   rows?: (Omit<RowOptions, "id" | "expr"> & { id?: string; expr?: string })[];
-  onChange?: (e: SpreadsheetOnChangeEvent) => void;
 };
 
 export type SpreadsheetOnChangeEvent = {
@@ -25,19 +24,17 @@ export type SerializedSpreadsheet = {
   }>;
 };
 
-export class Spreadsheet {
+export class Spreadsheet extends EventTarget {
   private rows = new Map<string, Row>();
   private graph = new Graph<string>();
-  private eventListeners: ((e: SpreadsheetOnChangeEvent) => void)[] = [];
   private globalContext: Record<string, Value> = {};
   private _variableToIdMap: Map<string, string> | null = null;
+  private cleanupFns: Map<string, () => void> = new Map();
 
   constructor(options?: SpreadsheetOptions) {
-    const { context, onChange } = options ?? {};
+    super();
+    const { context } = options ?? {};
     this.globalContext = context ?? {};
-    if (onChange) {
-      this.eventListeners.push(onChange);
-    }
 
     for (const row of options?.rows ?? []) {
       this.addRow(row);
@@ -56,15 +53,36 @@ export class Spreadsheet {
     const row = new Row({ ...options, id, expr: options.expr ?? "" });
     this.rows.set(id, row);
     this.graph.addNode(id);
+    this._variableToIdMap?.set(row.name, id);
 
     this.evaluateAll();
 
-    row.addEventListener("setInput", () => {
+    const handleSetInput = () => {
       this.evaluateAll();
-    });
+    };
 
-    row.addEventListener("updateExpression", () => {
+    const handleUpdateExpression = () => {
       this.evaluateAll();
+    };
+
+    const handleValueChange = () => {
+      this.evaluateAll();
+    };
+
+    const handleRemove = () => {
+      this.removeRow(id);
+      this.evaluateAll();
+    };
+
+    row.addEventListener("setInput", handleSetInput);
+    row.addEventListener("updateExpression", handleUpdateExpression);
+    row.addEventListener("valueChange", handleValueChange);
+    row.addEventListener("remove", handleRemove, { once: true });
+
+    this.cleanupFns.set(id, () => {
+      row.removeEventListener("setInput", handleSetInput);
+      row.removeEventListener("updateExpression", handleUpdateExpression);
+      row.removeEventListener("valueChange", handleValueChange);
     });
 
     return id;
@@ -74,6 +92,8 @@ export class Spreadsheet {
   removeRow(id: string): void {
     const row = this.rows.get(id);
     if (!row) return;
+    this.cleanupFns.get(id)?.();
+    this.cleanupFns.delete(id);
     this.rows.delete(id);
     this.graph.removeNode(id);
   }
@@ -94,13 +114,6 @@ export class Spreadsheet {
         expr.replace(new RegExp(`\\$${oldName}\\b`, "g"), `$${newName}`)
       );
     }
-  }
-
-  updateInputValue(id: string, value: any): void {
-    const row = this.rows.get(id);
-    if (!row) return;
-    row.setValue(value);
-    this.evaluateAll();
   }
 
   getVariableMap(): Map<string, string> {
@@ -158,14 +171,14 @@ export class Spreadsheet {
         const dep = this.rows.get(id!);
 
         if (!dep) {
-          row.setValue(undefined);
+          row.value = undefined;
           skip = true;
           break;
         }
 
         const val = dep.value;
         if (val === undefined) {
-          row.setValue(undefined);
+          row.value = undefined;
           skip = true;
           break;
         }
@@ -176,21 +189,19 @@ export class Spreadsheet {
       try {
         row.evaluate({ ...this.globalContext, ...scope });
       } catch (error) {
-        row.setValue(undefined);
+        row.value = undefined;
         row.setError(error as Error);
       }
     }
 
-    this.eventListeners.forEach((fn) => fn({ spreadsheet: this }));
+    this.dispatchEvent(
+      new CustomEvent("evaluate", { detail: { spreadsheet: this } })
+    );
   }
 
   /** Returns a snapshot of all current rows. */
   getRows(): Row[] {
     return Array.from(this.rows.values());
-  }
-
-  onChange(fn: (e: SpreadsheetOnChangeEvent) => void): void {
-    this.eventListeners.push(fn);
   }
 
   /** Returns a serializable object representation of the spreadsheet */
@@ -200,23 +211,23 @@ export class Spreadsheet {
         const input = row.getInput();
 
         return {
-        id: row.id,
-        name: row.name,
-        expr: row.getExpression(),
-        value: row.getValue(),
-        input: input
-          ? {
-              type: input.type,
-              props: {
-                ...input.props,
-                defaultValue: row.getValue(),
-              },
-            }
-          : undefined,
-        dependencies: row
-          .getDependencies()
-          .map(this.mapVarToId())
-          .filter(Boolean) as string[],
+          id: row.id,
+          name: row.name,
+          expr: row.getExpression(),
+          value: row.getValue(),
+          input: input
+            ? {
+                type: input.type,
+                props: {
+                  ...input.props,
+                  defaultValue: row.getValue(),
+                },
+              }
+            : undefined,
+          dependencies: row
+            .getDependencies()
+            .map(this.mapVarToId())
+            .filter(Boolean) as string[],
           tags: row.getTags(),
           error: row.getError()?.message,
         };

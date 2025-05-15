@@ -59,6 +59,11 @@ export function TableComposer<TData extends { id?: unknown }, TValue>({
       rowSelection,
       columnFilters: filters,
     },
+    initialState: {
+      pagination: {
+        pageSize: 30,
+      },
+    },
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,

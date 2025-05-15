@@ -5,29 +5,46 @@ import { CodeEditor } from "./code-editor";
 import { Table, TableComposer, TableContent, TableHeader } from "./data-table";
 import { columns } from "./spreadsheet-columns";
 import { Button } from "./ui/button";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { saveSpreadsheet } from "@/lib/queries/spreadsheet";
 
-function loadSpreadsheet() {
-  const savedData = localStorage.getItem("spreadsheet");
-  if (!savedData) return new Spreadsheet();
-  return Spreadsheet.deserialize(JSON.parse(savedData));
-}
+export function SpreadsheetTable({
+  data,
+  spreadsheetId,
+}: {
+  data: SerializedSpreadsheet;
+  spreadsheetId: string;
+}) {
+  const [spreadsheet, setSpreadsheet] = React.useState<Spreadsheet>(
+    data ? Spreadsheet.deserialize(data) : new Spreadsheet()
+  );
+  const [rows, setRows] = React.useState<Row[]>(spreadsheet.getRows());
+  const queryClient = useQueryClient();
 
-export function SpreadsheetTable() {
-  const [spreadsheet, setSpreadsheet] = React.useState<Spreadsheet | null>(null);
-  const [rows, setRows] = React.useState<Row[]>([]);
+  const saveMutation = useMutation({
+    mutationFn: (data: SerializedSpreadsheet) =>
+      saveSpreadsheet({
+        data: {
+          spreadsheetId,
+          rows: data.rows,
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["spreadsheet", spreadsheetId],
+      });
+    },
+  });
 
   React.useEffect(() => {
-    const spreadsheet = loadSpreadsheet();
-    setSpreadsheet(spreadsheet);
-    setRows(spreadsheet.getRows());
-  }, []);
+    const handleEvaluate = () => {
+      setRows(spreadsheet?.getRows() ?? []);
+    };
 
-  React.useEffect(() => {
-    if (!spreadsheet) return;
-
-    spreadsheet.onChange((e) => {
-      setRows(e.spreadsheet.getRows());
-    });
+    spreadsheet?.addEventListener("evaluate", handleEvaluate);
+    return () => {
+      spreadsheet?.removeEventListener("evaluate", handleEvaluate);
+    };
   }, [spreadsheet]);
 
   const addRow = () => {
@@ -42,13 +59,9 @@ export function SpreadsheetTable() {
 
   const handleSave = () => {
     const data = spreadsheet?.serialize();
-    localStorage.setItem("spreadsheet", JSON.stringify(data));
-  };
-
-  const handleLoad = () => {
-    const spreadsheet = loadSpreadsheet();
-    setSpreadsheet(spreadsheet);
-    setRows(spreadsheet.getRows());
+    if (data) {
+      saveMutation.mutate(data);
+    }
   };
 
   return (
@@ -58,7 +71,7 @@ export function SpreadsheetTable() {
         data={rows}
         meta={{ spreadsheet }}
         defaultColumnVisibility={{
-          dependencies: false,
+          dependencies: true,
         }}
       >
         <Table>
@@ -70,11 +83,12 @@ export function SpreadsheetTable() {
         <Button variant="outline" onClick={addRow}>
           Add Row
         </Button>
-        <Button variant="outline" onClick={handleSave}>
-          Save
-        </Button>
-        <Button variant="outline" onClick={handleLoad}>
-          Load
+        <Button
+          variant="outline"
+          onClick={handleSave}
+          disabled={saveMutation.isPending}
+        >
+          {saveMutation.isPending ? "Saving..." : "Save"}
         </Button>
       </div>
     </div>

@@ -14,7 +14,7 @@ const SAFE_GLOBALS = {
     Number: ['isFinite', 'isInteger', 'isNaN', 'parseFloat', 'parseInt'],
     String: ['fromCharCode', 'fromCodePoint'],
     Array: ['isArray'],
-    Date: ['now', 'parse', 'UTC'],
+    Date: ['now', 'parse', 'UTC', 'toISOString', 'toLocaleString', 'toLocaleDateString', 'toLocaleTimeString', 'toString', 'valueOf'],
     JSON: ['parse', 'stringify']
 };
 

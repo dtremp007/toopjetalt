@@ -11,7 +11,8 @@ export type Value =
   | null
   | undefined
   | object
-  | Function;
+  | Function
+  | Date;
 
 export type ValueType =
   | "number"
@@ -22,7 +23,8 @@ export type ValueType =
   | "object"
   | "function"
   | "array"
-  | "error";
+  | "error"
+  | "date";
 
 export type RowInput = {
   type: string;
@@ -80,12 +82,17 @@ export class Row extends EventTarget {
     return result;
   }
 
+  public remove(): void {
+    this.dispatchEvent(new Event("remove"));
+  }
+
   public getValue(): Value {
     return this.value;
   }
 
   public setValue(value: Value): void {
     this.value = value;
+    this.dispatchEvent(new Event("valueChange"));
   }
 
   public getInput(): RowInput | undefined {
@@ -151,6 +158,10 @@ export class Row extends EventTarget {
       return "error";
     }
 
+    if (this.value instanceof Date) {
+      return "date";
+    }
+
     if (Array.isArray(this.value)) {
       return "array";
     }
@@ -160,7 +171,7 @@ export class Row extends EventTarget {
 
   public updateExpression(expr: string | ((expr: string) => string)): void {
     this.error = undefined;
-    this.dependencies = []
+    this.dependencies = [];
 
     this.expr = typeof expr === "function" ? expr(this.expr) : expr;
     this.AST = parse(this.expr, { ecmaVersion: "latest" });
@@ -196,10 +207,12 @@ export class Row extends EventTarget {
 
   public setTags(tags: string[]): void {
     this.tags = tags;
+    this.dispatchEvent(new Event("updateTags"));
   }
 
   public removeTag(tag: string): void {
     this.tags = this.tags.filter((t) => t !== tag);
+    this.dispatchEvent(new Event("updateTags"));
   }
 }
 
